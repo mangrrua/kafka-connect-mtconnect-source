@@ -13,7 +13,7 @@ public class GetStreamingDataTest {
      * @param args nothing
      */
     public static void main(String[] args) {
-        String agentUrl = "http://mtconnect.mazakcorp.com:5611";
+        String agentUrl = "http://mtconnect.mazakcorp.com:5609";
         AgentEndpoint agentEndpoint = new AgentEndpoint(agentUrl, 1000, 10, 5000);
         AgentHttpClient agentHttpClient = new AgentHttpClient(agentEndpoint, 15000, 15000);
 
@@ -29,7 +29,7 @@ public class GetStreamingDataTest {
                 Optional<ResponseModel> optionalResponse = agentHttpClient.getNextChunkIfExist();
                 if (optionalResponse.isPresent()) {
                     ResponseModel model = optionalResponse.get();
-                    System.out.println(new String(model.getContent()));
+                    System.out.println(model.getContent());
                 }
             } catch (IOException | XMLStreamException ioe) {
                 ioe.printStackTrace();

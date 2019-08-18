@@ -1,8 +1,10 @@
+
 # Kafka Connect Source Connector For MTConnect 
 `kafka-connect-mtconnect-source` is used to collect data from MTConnect agents to Apache Kafka. 
 
 ## Contents 
 - [Building the Connector](#building-the-connector)    
+- [General Flow](#general-flow)
 - [MTConnect Protocol](#mtconnect-protocol)    
 - [Advantage Of MTConnect Connector](#advantage-of-mtconnect-connector)    
 - [MTConnect Connector Design](#mtconnect-connector-design)    
@@ -28,6 +30,13 @@ mvn clean package
 ```    
  Jar with dependencies will be created in the `/target` directory as `project-name-1.0-jar-with-dependencies.jar`.    
     
+## General Flow
+General flow to collect data from the agents to Kafka;
+
+![General Flow](images/general_flow.png)
+
+Data is collected from the agents using Kafka-Connect that fault-tolerant and scalable system to the Apache Kafka. 
+
 ## MTConnect Protocol 
 MTConnect standard provides two way to get streaming data from the agents. One of them is `"use nextSequence"` every time. In this way, we must create a new `URL` with `nextSequence` that received from the previous response. Then, we create a new connection with the Agent. This way is working but not optimized. Ìn this way, `"nextSequence"` must be controlled by client. Also, new connection, created between client and agent, is very costly for each request. Shortly, we pull data from the Agent with a specified interval in this way.     
     
@@ -100,11 +109,11 @@ Example URL to get streaming data using the above way;
  A lot of technologies exist in the big data world. One of the most commonly used technology is, `Apache Kafka`. It's a very powerful, high-speed queue between systems. If your data rate is so high, you can use Kafka to ingest data. Then, you can get data from Kafka with streaming or batch processing engine.     
     
 #### So, what is the advantage of this connector?    
- Assume that you have extra service that working on panel PC of CNC machine. Each service sends data to the centralized system. That's working now. But, it is difficult to maintain and manage. If any error occurs in any panel pc(even if other than agent errors), you must intervene to related panel pc to re-collect the data from the agent. This is important that panel PCs generally fail or down. We may lose a lot of data because of this. We don't want this!    
+ Assume that you have extra service that working on panel PC of CNC machine. Each service sends data to the centralized system. That's working now. But, it is difficult to maintain and manage. If any error occurs in any panel pc(even if other than agent errors), you must intervene to related panel pc to re-collect the data from the agent immediately. This is important because panel PCs generally fail or down. We may lose a lot of data because of this. We don't want this!    
     
-With Kafka Connect MTConnect Source Connector, we collect data from agents into a `centralized system`. We don’t use any extra system or service between agent and centralized system. We collect data directly into a centralized sytem. In this system, we don’t pull data from the agents, agents sends data to the centralized system every specified time. Client that working on the centralized system just read the response of the agent. No external services. No external maintenance. No external errors. We can send it to the anywhere from the Kafka! So, this is so important!    
+With Kafka Connect MTConnect Source Connector, we collect data using a `centralized system`. In this system, we don’t pull data from the agents, agents sends data to the centralized system every specified time. Clients that working on the centralized system just read the response of the agents. Shortly, we collect data through a scalable and fault-tolerant system. We can send data to the anywhere from the Kafka! So, this is so important!     
     
-For this, you just need to set up a Kafka Connect Cluster. This is more manageable, more fault-tolerant and less maintenance. Also, if any node in the cluster is down, Kafka Connect automatically assigns tasks to other nodes. This minimizes the duration to get data again, and data loss while collecting data. Kafka connect collects data from the agents, then sends it to Kafka topic to transmission to streaming engines etc.         
+For this, you just need to set up a Kafka Connect Cluster. This is more manageable, more fault-tolerant, scalable and less maintenance. Also, if any node in the cluster is down, Kafka Connect automatically assigns tasks to other nodes. This minimizes the duration to get data again, and data loss while collecting data. Kafka connect collects data from the agents, then sends it to Kafka topic to transmission to streaming engines etc.         
     
 
 ## MTConnect Connector Design 
@@ -139,7 +148,7 @@ recordValue: MTConnectResponse (String Schema)
 You can get data as String XML format. But if you want to convert XML to JSON, you can write a custom `Kafka Connect Single Message Transform` for this. 
  
     
-### So, what happens to "unreachable agents" ? 
+### So, what happens to "unreachable agents"? 
 Generally, agents fail, dows or operator shutdown it. Thus, we can’t reach the agent. In this case, we may want to know `which` and `why` agents unreachable now.     
     
 Connector tries to establish the connection with the agent. If the connection fails, it sends the unreachable agent to another Kafka topic with the error message. For example; `http://agent1:5199` is unreachable now. Agent sends it to Kafka topic as JSON String format like this;    
@@ -156,7 +165,7 @@ Connector tries to establish the connection with the agent. If the connection fa
     
  ## Minimize The Data Loss 
  MTConnect Connector offers two options from based on where you want to get the data. 
- 1. You always get the latest data. If you'll choose that, data will be received from the ending of the agent buffer when any connector or task fails occurs. The connector will not use the saved offsets for this option. In this option, **you may lose a lot of data**. 
+ 1. You always get the latest data. If you'll choose that, data will be received from the ending of the agent buffer when any connector or task fails occurs. The connector will not use the saved offsets for this option. In this option, **you may lose a lot of data** until re-connect to the agent. 
  
  2. Kafka Connect provides to store `source partition` offsets in the Kafka topics. The connector can use the latest offsets(as called `source offsets`) to get data from where it left off. Connector uses `instanceId` and `nextSequence` as offsets. 
 
@@ -174,23 +183,23 @@ Connector tries to establish the connection with the agent. If the connection fa
 	```shell    
 	- Saved Offsets in the Kafka Topic -
 		 instanceId: 15, 
-		 nextSequence: 100
+		 nextSequence:100
 	```  
 
 	and `nextSequence, firstSequence and instanceId` of the Current Request  like this;    
-	```shell    
-	 <Header firstSequence=50 instanceId=15 nextSequence=100 ... />
+	```xml    
+	<Header firstSequence="50" instanceId="15" nextSequence="100" ... />
 	```  
 
 	If any offsets not found, the connector will get data from the beginning of the agent buffer. If found, connector checks the `instanceIds`. `InstanceId` will be changed if the agent restart. Therefore, connector wants to make sure instanceIds is the same. If instanceIds are different, it `will get data from the beginning of the agent buffer`. 
 
 	**_Note:_** _We can not anything to the removed data from the agent buffer!_
 	
-	 If `instanceIds` are the same(like the above example), then it checks the `nextSequence` exist or not in the agent buffer. If `firstSequence` is less than the `nextSequence`, that means the agent still has the data.  It will receive data using saved `nextSequence` in the offsets. If not exist in the agent buffer, it will get data from the beginning of the agent buffer. 
+	 If `instanceIds` are the same(like the above example), then it checks the `nextSequence` exist or not in the agent buffer. If `firstSequence` of current request is less than the `nextSequence` of offsets, that means the agent still has the data.  It will receive data using saved `nextSequence` in the offsets. If not exist in the agent buffer, it will get data from the beginning of the agent buffer. 
 
 	So, assume that we have `nextSequence=100` in the offsets, and `firstSequence=99` in the current buffer state. In this case, the connector will receive data that have nextSequence is greater than the `100`. But, agent buffer maybe removes a lot of data until `source task` receives data(that means new `firstSequence` is greater than the `nextSequence`). You don't need to worry! 
 
-	If `source task` successfully connected to the agent, it first checks the connection is `multipart/x-mixed-replace` or not. If it's `multipart/x-mixed-replace`, the source task will start to receive data. If not, this may have happened for two reasons. One is MTConnect Agent could have sent an error response for this request. Therefore, source task checks the response to contains `MTConnectError` tag or not. If contains, task will get start the data from the beginning of the agent buffer. If it does not contain, that means agent did not support multipart/x-mixed-replace. 
+	If `source task` successfully connected to the agent, it first checks the connection is `multipart/x-mixed-replace` or not. If it's `multipart/x-mixed-replace`, the source task will start to receive data. If not, this may have happened for two reasons. One is MTConnect Agent could have sent an error response for this request. Therefore, source task checks the response to contains `MTConnectError` tag or not. If contains, task will get the data from the beginning of the agent buffer. If it does not contain, that means agent did not support multipart/x-mixed-replace. 
 
 ## Source Properties
 
@@ -224,7 +233,7 @@ Connector tries to establish the connection with the agent. If the connection fa
 
 <hr>
 
-`property`: mtconnect.interval.ms
+`property`: _mtconnect.interval.ms_
 
 `Description`: Send data every specified time if there is new data in the buffer. Must be millisecond.
 
@@ -246,7 +255,7 @@ Connector tries to establish the connection with the agent. If the connection fa
 
 `property`: mtconnect.heartbeat.ms
 
-`Description`: Interval to prevent connection fails between client and MTConnect Agent. If there is no data available in the buffer, the agent must send out a heartbeat to maintain contact.
+`Description`: Interval to prevent connection fails between client and MTConnect Agent. If there is no data available in the buffer, the agent must send out a heartbeat to maintain contact.  Must be millisecond.
 
 `Type`: Integer
 
@@ -256,7 +265,7 @@ Connector tries to establish the connection with the agent. If the connection fa
 
 `property`: http.connect.timeout.ms
 
-`Description`: Maximum time to connect to the MTConnect Agent.
+`Description`: Maximum time to connect to the MTConnect Agent.  Must be millisecond.
 
 `Type`: Integer
 
@@ -266,7 +275,7 @@ Connector tries to establish the connection with the agent. If the connection fa
 
 `property`: http.read.timeout.ms
 
-`Description`: Maximum time to read data from the MTConnect Agent. Value of this property must be greater than the 'heartbeat' value. If not, the connection will be closed each time if there is no available new data in the agent.
+`Description`: Maximum time to read data from the MTConnect Agent. Value of this property must be greater than the 'heartbeat' value. If not, the connection will be closed each time if there is no available new data in the agent.  Must be millisecond.
 
 `Type`: Integer
 
